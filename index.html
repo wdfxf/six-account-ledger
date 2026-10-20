@@ -89,11 +89,11 @@ nav button.on{color:#22c55e;font-weight:700}
 
 <section id="t-ov">
   <div class="big">
-    <div class="card"><div class="n" id="ovLeft">-</div><div class="s">本月结余（预算-支出）</div></div>
+    <div class="card"><div class="n" id="ovLeft">-</div><div class="s">本月结余（可花的1600－已花）</div></div>
     <div class="card"><div class="n" id="ovCount">-</div><div class="s">本月支出笔数</div></div>
   </div>
   <button class="btn" id="sweepBtn" onclick="sweep()" style="display:none"></button>
-  <div class="card"><h3>各账户情况</h3><div id="ovBars"></div></div>
+  <div class="card"><h3>各账户情况</h3><div class="hint" style="margin-bottom:10px">四个可花账户（玩乐/教育/需求/付出）的剩余加起来＝上面的结余；🏆🏦 是罐子，月初已转走，不算结余。</div><div id="ovBars"></div></div>
 </section>
 
 <section id="t-list">
@@ -141,6 +141,7 @@ const ACC=[
  {k:'give',n:'付出',e:'🎁',c:'#f472b6'}
 ];
 const DEF={freedom:200,fun:200,save:200,edu:200,need:1100,give:100};
+const SPK=['fun','edu','need','give'];
 let S;try{S=JSON.parse(localStorage.getItem('ledger6'))}catch(e){}
 if(!S||!S.budgets)S={budgets:{...DEF},expenses:[]};
 if(!S.init)S.init={freedom:0,save:0};
@@ -164,12 +165,14 @@ function render(){
  const all=S.expenses.filter(e=>ymOf(e.ts)===ym);
  const exps=all.filter(e=>e.type!=='in');
  const tot=exps.reduce((s,e)=>s+e.amount,0);
- const bud=Object.values(S.budgets).reduce((a,b)=>a+b,0);
- $('monthSum').textContent='支出 '+tot.toFixed(2)+' / '+bud;
- $('ovLeft').textContent=(bud-tot).toFixed(2);
+ const spendBud=SPK.reduce((s,k)=>s+(S.budgets[k]||0),0);
+ const spendExp=SPK.reduce((s,k)=>s+monthExp(k),0);
+ const left=spendBud-spendExp;
+ $('monthSum').textContent='已花 '+tot.toFixed(2)+' / 可花 '+spendBud;
+ $('ovLeft').textContent=left.toFixed(2);
  $('ovCount').textContent=exps.length;
  const sb=$('sweepBtn');
- if(tot>0&&bud-tot>0.005){sb.style.display='block';sb.textContent='把本月结余 '+(bud-tot).toFixed(2)+' 元转入 🏆 财务自由罐子 →'}
+ if(tot>0&&left>0.005){sb.style.display='block';sb.textContent='把本月结余 '+left.toFixed(2)+' 元转入 🏆 财务自由罐子 →'}
  else{sb.style.display='none'}
  $('chips').innerHTML=ACC.map(a=>`<div class="chip${sel===a.k?' sel':''}" style="--c:${a.c}" onclick="sel='${a.k}';render()"><span class="e">${a.e}</span>${a.n}</div>`).join('');
  const sa=accOf(sel);let hint;
@@ -205,11 +208,10 @@ function saveRec(){
 }
 function del(ts){if(!confirm('删除这笔记录？'))return;S.expenses=S.expenses.filter(e=>e.ts!==ts);save();render();toast('已删除')}
 function sweep(){
- const bud=Object.values(S.budgets).reduce((a,b)=>a+b,0);
- const left=bud-sum(e=>ymOf(e.ts)===ym&&e.type!=='in');
- if(left<=0)return toast('本月没有结余');
+ const left=SPK.reduce((s,k)=>s+(S.budgets[k]||0)-monthExp(k),0);
+ if(left<=0.005)return toast('本月没有结余');
  S.expenses.push({ts:Date.now(),name:ym.replace('-','/')+' 结余转入',amount:Math.round(left*100)/100,account:'freedom',type:'in'});
- save();render();toast('结余 '+(Math.round(left*100)/100).toFixed(2)+' 元已转入 🏆 罐子 ✓');
+ save();render();toast('结余 '+left.toFixed(2)+' 元已转入 🏆 罐子 ✓');
 }
 function saveBudgets(){ACC.forEach(a=>{const v=parseFloat($('b_'+a.k).value);if(!isNaN(v)&&v>=0)S.budgets[a.k]=v});save();render();toast('预算已保存 ✓')}
 function saveInit(){ACC.filter(a=>a.pot).forEach(a=>{const v=parseFloat($('i_'+a.k).value);if(!isNaN(v)&&v>=0)S.init[a.k]=v});save();render();toast('期初余额已保存 ✓')}
