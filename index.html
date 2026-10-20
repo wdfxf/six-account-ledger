@@ -89,9 +89,10 @@ nav button.on{color:#22c55e;font-weight:700}
 
 <section id="t-ov">
   <div class="big">
-    <div class="card"><div class="n" id="ovLeft">-</div><div class="s">本月总剩余</div></div>
+    <div class="card"><div class="n" id="ovLeft">-</div><div class="s">本月结余（预算-支出）</div></div>
     <div class="card"><div class="n" id="ovCount">-</div><div class="s">本月支出笔数</div></div>
   </div>
+  <button class="btn" id="sweepBtn" onclick="sweep()" style="display:none"></button>
   <div class="card"><h3>各账户情况</h3><div id="ovBars"></div></div>
 </section>
 
@@ -167,6 +168,9 @@ function render(){
  $('monthSum').textContent='支出 '+tot.toFixed(2)+' / '+bud;
  $('ovLeft').textContent=(bud-tot).toFixed(2);
  $('ovCount').textContent=exps.length;
+ const sb=$('sweepBtn');
+ if(tot>0&&bud-tot>0.005){sb.style.display='block';sb.textContent='把本月结余 '+(bud-tot).toFixed(2)+' 元转入 🏆 财务自由罐子 →'}
+ else{sb.style.display='none'}
  $('chips').innerHTML=ACC.map(a=>`<div class="chip${sel===a.k?' sel':''}" style="--c:${a.c}" onclick="sel='${a.k}';render()"><span class="e">${a.e}</span>${a.n}</div>`).join('');
  const sa=accOf(sel);let hint;
  if(sa.pot&&mode==='in'){hint=`<b style="color:${sa.c}">${sa.e}${sa.n}</b> 罐子现有 <b class="pot">${potOf(sel).toFixed(2)}</b> 元`}
@@ -200,6 +204,13 @@ function saveRec(){
  toast(mode==='in'?'已转入 '+accOf(sel).n+' ✓':'已记入 '+accOf(sel).n+' ✓');render();
 }
 function del(ts){if(!confirm('删除这笔记录？'))return;S.expenses=S.expenses.filter(e=>e.ts!==ts);save();render();toast('已删除')}
+function sweep(){
+ const bud=Object.values(S.budgets).reduce((a,b)=>a+b,0);
+ const left=bud-sum(e=>ymOf(e.ts)===ym&&e.type!=='in');
+ if(left<=0)return toast('本月没有结余');
+ S.expenses.push({ts:Date.now(),name:ym.replace('-','/')+' 结余转入',amount:Math.round(left*100)/100,account:'freedom',type:'in'});
+ save();render();toast('结余 '+(Math.round(left*100)/100).toFixed(2)+' 元已转入 🏆 罐子 ✓');
+}
 function saveBudgets(){ACC.forEach(a=>{const v=parseFloat($('b_'+a.k).value);if(!isNaN(v)&&v>=0)S.budgets[a.k]=v});save();render();toast('预算已保存 ✓')}
 function saveInit(){ACC.filter(a=>a.pot).forEach(a=>{const v=parseFloat($('i_'+a.k).value);if(!isNaN(v)&&v>=0)S.init[a.k]=v});save();render();toast('期初余额已保存 ✓')}
 function doExport(){$('ioBox').value=JSON.stringify(S);$('ioBox').select();try{document.execCommand('copy');toast('已复制，去粘贴备份')}catch(e){toast('长按文本框全选复制')}}
