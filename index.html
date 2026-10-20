@@ -21,6 +21,9 @@ label{display:block;font-size:13px;color:#94a3b8;margin:12px 0 6px}
 input[type=text],input[type=number],textarea{width:100%;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#e2e8f0;padding:12px;font-size:16px;outline:none}
 input:focus,textarea:focus{border-color:#22c55e}
 .amount{font-size:28px;font-weight:700;text-align:center;padding:14px}
+.mode{display:flex;gap:8px;margin-top:4px}
+.tbtn{flex:1;border:1px solid #334155;background:#0f172a;color:#94a3b8;border-radius:10px;padding:9px;font-size:14px}
+.tbtn.on{background:#22c55e;color:#052e16;border-color:#22c55e;font-weight:700}
 .chips{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .chip{background:#0f172a;border:1.5px solid #334155;border-radius:12px;padding:10px 8px;text-align:center;font-size:14px;color:#94a3b8}
 .chip .e{font-size:18px;display:block;margin-bottom:2px}
@@ -35,6 +38,7 @@ input:focus,textarea:focus{border-color:#22c55e}
 .bar i{display:block;height:100%;border-radius:5px;background:var(--c);transition:width .3s}
 .acc-sub{display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:4px}
 .over{color:#f87171}
+.pot{color:#22c55e;font-weight:700}
 .big{display:flex;gap:10px;margin-bottom:12px}
 .big .card{flex:1;text-align:center;margin:0;padding:12px}
 .big .n{font-size:22px;font-weight:800;color:#22c55e}
@@ -67,23 +71,28 @@ nav button.on{color:#22c55e;font-weight:700}
 
 <section id="t-rec" class="on">
   <div class="card">
+    <div class="mode">
+      <button id="modeOut" class="tbtn on" onclick="setMode('out')">➖ 支出</button>
+      <button id="modeIn" class="tbtn" onclick="setMode('in')">➕ 转入（存进罐子）</button>
+    </div>
     <label>金额（元）</label>
     <input type="number" id="fAmt" class="amount" inputmode="decimal" placeholder="0.00" step="0.01">
-    <label>买了什么</label>
-    <input type="text" id="fName" placeholder="例：奶茶 / 四级报名 / 话费" maxlength="30">
+    <label>名称</label>
+    <input type="text" id="fName" placeholder="例：奶茶 / 四级报名 / 月初转入 / 结余转入" maxlength="30">
     <label>记入哪个账户</label>
     <div class="chips" id="chips"></div>
+    <div id="selHint"></div>
     <button class="btn" onclick="saveRec()">记 入 ✔</button>
   </div>
-  <div class="card"><div class="hint">💡 记完一笔会自动归类算预算。数据保存在这台手机的浏览器里，记得每月在「设置」里导出备份。</div></div>
+  <div class="card"><div class="hint">💡 支出＝花钱（自动算预算）；转入＝把钱存进 🏆财务自由 或 🏦长期储蓄 罐子（累积余额）。数据保存在本机浏览器，每月去「设置」导出备份。</div></div>
 </section>
 
 <section id="t-ov">
   <div class="big">
     <div class="card"><div class="n" id="ovLeft">-</div><div class="s">本月总剩余</div></div>
-    <div class="card"><div class="n" id="ovCount">-</div><div class="s">本月笔数</div></div>
+    <div class="card"><div class="n" id="ovCount">-</div><div class="s">本月支出笔数</div></div>
   </div>
-  <div class="card"><h3>各账户使用情况</h3><div id="ovBars"></div></div>
+  <div class="card"><h3>各账户情况</h3><div id="ovBars"></div></div>
 </section>
 
 <section id="t-list">
@@ -95,6 +104,12 @@ nav button.on{color:#22c55e;font-weight:700}
     <h3>每月预算（元）</h3>
     <div id="setBudgets"></div>
     <button class="btn gray" onclick="saveBudgets()">保存预算</button>
+  </div>
+  <div class="card">
+    <h3>罐子期初余额（元）</h3>
+    <div class="hint" style="margin-bottom:8px">罐子里现在已经躺了多少钱，填在这里（只填一次）。</div>
+    <div id="setInit"></div>
+    <button class="btn gray" onclick="saveInit()">保存期初余额</button>
   </div>
   <div class="card">
     <h3>数据备份</h3>
@@ -117,9 +132,9 @@ nav button.on{color:#22c55e;font-weight:700}
 </nav>
 <script>
 const ACC=[
- {k:'freedom',n:'财务自由',e:'🏆',c:'#22c55e'},
+ {k:'freedom',n:'财务自由',e:'🏆',c:'#22c55e',pot:true},
  {k:'fun',n:'玩乐',e:'🎮',c:'#f59e0b'},
- {k:'save',n:'长期储蓄',e:'🏦',c:'#3b82f6'},
+ {k:'save',n:'长期储蓄',e:'🏦',c:'#3b82f6',pot:true},
  {k:'edu',n:'教育',e:'📚',c:'#a78bfa'},
  {k:'need',n:'需求',e:'🍚',c:'#94a3b8'},
  {k:'give',n:'付出',e:'🎁',c:'#f472b6'}
@@ -127,55 +142,69 @@ const ACC=[
 const DEF={freedom:200,fun:200,save:200,edu:200,need:1100,give:100};
 let S;try{S=JSON.parse(localStorage.getItem('ledger6'))}catch(e){}
 if(!S||!S.budgets)S={budgets:{...DEF},expenses:[]};
-let sel='fun',ym=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')})();
+if(!S.init)S.init={freedom:0,save:0};
+let sel='fun',mode='out';
+let ym=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')})();
 const $=id=>document.getElementById(id);
 const save=()=>localStorage.setItem('ledger6',JSON.stringify(S));
 const ymOf=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1600)}
 function tab(k,btn){document.querySelectorAll('main section').forEach(s=>s.classList.remove('on'));$('t-'+k).classList.add('on');document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');render()}
+function setMode(m){mode=m;$('modeOut').classList.toggle('on',m==='out');$('modeIn').classList.toggle('on',m==='in');render()}
 function mv(d){let[y,m]=ym.split('-').map(Number);m+=d;if(m<1){m=12;y--}if(m>12){m=1;y++}ym=y+'-'+String(m).padStart(2,'0');render()}
 function accOf(k){return ACC.find(a=>a.k===k)}
-function monthExp(k){return S.expenses.filter(e=>ymOf(e.ts)===ym&&e.account===k).reduce((s,e)=>s+e.amount,0)}
+function sum(f){return S.expenses.filter(f).reduce((s,e)=>s+e.amount,0)}
+function monthExp(k){return sum(e=>ymOf(e.ts)===ym&&e.account===k&&e.type!=='in')}
+function monthIn(k){return sum(e=>ymOf(e.ts)===ym&&e.account===k&&e.type==='in')}
+function allIn(k){return sum(e=>e.account===k&&e.type==='in')}
+function allExp(k){return sum(e=>e.account===k&&e.type!=='in')}
 function render(){
  $('mLabel').textContent=ym.replace('-','年 ')+'月';
  const all=S.expenses.filter(e=>ymOf(e.ts)===ym);
- const tot=all.reduce((s,e)=>s+e.amount,0);
+ const exps=all.filter(e=>e.type!=='in');
+ const tot=exps.reduce((s,e)=>s+e.amount,0);
  const bud=Object.values(S.budgets).reduce((a,b)=>a+b,0);
  $('monthSum').textContent='支出 '+tot.toFixed(2)+' / '+bud;
  $('ovLeft').textContent=(bud-tot).toFixed(2);
- $('ovCount').textContent=all.length;
- // chips
+ $('ovCount').textContent=exps.length;
  $('chips').innerHTML=ACC.map(a=>`<div class="chip${sel===a.k?' sel':''}" style="--c:${a.c}" onclick="sel='${a.k}';render()"><span class="e">${a.e}</span>${a.n}</div>`).join('');
- const sa=accOf(sel);$('chips').insertAdjacentHTML('afterend','');
- const rem=(S.budgets[sel]||0)-monthExp(sel);
- if(!$('selHint')){const h=document.createElement('div');h.id='selHint';h.className='hint';h.style.marginTop='8px';$('chips').parentNode.insertBefore(h,$('chips').nextSibling)}
- $('selHint').innerHTML=`<b style="color:${sa.c}">${sa.e}${sa.n}</b> 本月剩余 <b>${rem.toFixed(2)}</b> 元`;
- // overview bars
- $('ovBars').innerHTML=ACC.map(a=>{const b=S.budgets[a.k]||0;const u=monthExp(a.k);const p=b?Math.min(u/b*100,100):0;const left=b-u;
-  return `<div class="acc-row"><div class="acc-top"><b>${a.e} ${a.n}</b><span>${u.toFixed(2)} / ${b}</span></div><div class="bar" style="--c:${a.c}"><i style="width:${p}%"></i></div><div class="acc-sub"><span>剩余 ${left.toFixed(2)}</span>${left<0?'<span class="over">超支 '+(-left).toFixed(2)+'</span>':''}</div></div>`}).join('');
- // list
+ const sa=accOf(sel);let hint;
+ if(sa.pot&&mode==='in'){hint=`<b style="color:${sa.c}">${sa.e}${sa.n}</b> 罐子现有 <b class="pot">${potOf(sel).toFixed(2)}</b> 元`}
+ else{const rem=(S.budgets[sel]||0)-monthExp(sel);hint=`<b style="color:${sa.c}">${sa.e}${sa.n}</b> 本月剩余 <b>${rem.toFixed(2)}</b> 元`}
+ $('selHint').innerHTML=hint;
+ $('ovBars').innerHTML=ACC.map(a=>{
+  if(a.pot){
+   const bal=potOf(a.k),mi=monthIn(a.k);
+   return `<div class="acc-row"><div class="acc-top"><b>${a.e} ${a.n}</b><span>本月转入 ${mi.toFixed(2)}</span></div><div class="bar" style="--c:${a.c}"><i style="width:${Math.min(bal/20,100)}%"></i></div><div class="acc-sub"><span>罐子余额 <b class="pot">${bal.toFixed(2)}</b></span><span>期初 ${(S.init[a.k]||0).toFixed(2)}</span></div></div>`
+  }
+  const b=S.budgets[a.k]||0,u=monthExp(a.k),p=b?Math.min(u/b*100,100):0,left=b-u;
+  return `<div class="acc-row"><div class="acc-top"><b>${a.e} ${a.n}</b><span>${u.toFixed(2)} / ${b}</span></div><div class="bar" style="--c:${a.c}"><i style="width:${p}%"></i></div><div class="acc-sub"><span>剩余 ${left.toFixed(2)}</span>${left<0?'<span class="over">超支 '+(-left).toFixed(2)+'</span>':''}</div></div>`
+ }).join('');
  const days={};all.forEach(e=>{const d=new Date(e.ts);const k=(d.getMonth()+1)+'月'+d.getDate()+'日';(days[k]=days[k]||[]).push(e)});
  const ks=Object.keys(days).sort((a,b)=>b.slice(0,b.indexOf('月'))-a.slice(0,a.indexOf('月')));
  let html=ks.length?'':'<div class="empty">这个月还没有记录</div>';
- ks.forEach(k=>{html+=`<div class="day">${k}</div>`;days[k].slice().reverse().forEach(e=>{const a=accOf(e.account);
-  html+=`<div class="item" style="--c:${a.c}"><div><span class="l">${esc(e.name)}</span><span class="tag">${a.e}${a.n}</span></div><div style="display:flex;align-items:center;gap:2px"><span class="a">-${e.amount.toFixed(2)}</span><button class="x" onclick="del(${e.ts})">×</button></div></div>`})});
+ ks.forEach(k=>{html+=`<div class="day">${k}</div>`;days[k].slice().reverse().forEach(e=>{const a=accOf(e.account);const isIn=e.type==='in';
+  html+=`<div class="item" style="--c:${a.c}"><div><span class="l">${esc(e.name)}</span><span class="tag">${a.e}${a.n}</span></div><div style="display:flex;align-items:center;gap:2px"><span class="a" style="${isIn?'color:#22c55e':''}">${isIn?'+':'-'}${e.amount.toFixed(2)}</span><button class="x" onclick="del(${e.ts})">×</button></div></div>`})});
  $('listBox').innerHTML=html;
- // settings
  $('setBudgets').innerHTML=ACC.map(a=>`<div class="setrow"><span>${a.e} ${a.n}</span><input type="number" id="b_${a.k}" value="${S.budgets[a.k]??0}" inputmode="decimal"></div>`).join('');
+ $('setInit').innerHTML=ACC.filter(a=>a.pot).map(a=>`<div class="setrow"><span>${a.e} ${a.n}</span><input type="number" id="i_${a.k}" value="${S.init[a.k]||0}" inputmode="decimal"></div>`).join('');
 }
+function potOf(k){return (S.init[k]||0)+allIn(k)-allExp(k)}
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
 function saveRec(){
  const amt=parseFloat($('fAmt').value),name=$('fName').value.trim();
  if(!amt||amt<=0)return toast('先填金额');
- S.expenses.push({ts:Date.now(),name:name||'未命名',amount:Math.round(amt*100)/100,account:sel});
- save();$('fAmt').value='';$('fName').value='';
- const a=accOf(sel);toast('已记入 '+a.n+' ✓');render();
+ const rec={ts:Date.now(),name:name||(mode==='in'?'转入':'未命名'),amount:Math.round(amt*100)/100,account:sel};
+ if(mode==='in')rec.type='in';
+ S.expenses.push(rec);save();$('fAmt').value='';$('fName').value='';
+ toast(mode==='in'?'已转入 '+accOf(sel).n+' ✓':'已记入 '+accOf(sel).n+' ✓');render();
 }
 function del(ts){if(!confirm('删除这笔记录？'))return;S.expenses=S.expenses.filter(e=>e.ts!==ts);save();render();toast('已删除')}
 function saveBudgets(){ACC.forEach(a=>{const v=parseFloat($('b_'+a.k).value);if(!isNaN(v)&&v>=0)S.budgets[a.k]=v});save();render();toast('预算已保存 ✓')}
+function saveInit(){ACC.filter(a=>a.pot).forEach(a=>{const v=parseFloat($('i_'+a.k).value);if(!isNaN(v)&&v>=0)S.init[a.k]=v});save();render();toast('期初余额已保存 ✓')}
 function doExport(){$('ioBox').value=JSON.stringify(S);$('ioBox').select();try{document.execCommand('copy');toast('已复制，去粘贴备份')}catch(e){toast('长按文本框全选复制')}}
-function doImport(){try{const d=JSON.parse($('ioBox').value);if(!d.budgets||!Array.isArray(d.expenses))throw 0;S=d;save();render();toast('恢复成功 ✓')}catch(e){toast('备份文本不对，检查一下')}}
-function clearAll(){if(!confirm('确定清空全部记录和预算？此操作不可恢复！'))return;if(!confirm('再确认一次：真的清空？'))return;S={budgets:{...DEF},expenses:[]};save();render();toast('已清空')}
+function doImport(){try{const d=JSON.parse($('ioBox').value);if(!d.budgets||!Array.isArray(d.expenses))throw 0;if(!d.init)d.init={freedom:0,save:0};S=d;save();render();toast('恢复成功 ✓')}catch(e){toast('备份文本不对，检查一下')}}
+function clearAll(){if(!confirm('确定清空全部记录和预算？此操作不可恢复！'))return;if(!confirm('再确认一次：真的清空？'))return;S={budgets:{...DEF},init:{freedom:0,save:0},expenses:[]};save();render();toast('已清空')}
 render();
 </script>
 </body>
